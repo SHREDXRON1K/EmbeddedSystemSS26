@@ -52,6 +52,28 @@ static unsigned char buffer[16] = { // es zeigt 3
   0x00, 0x1C
 };
 
+static unsigned char show_off[16] = { // shows "OFF"
+    0x00, 0xDB,  // row 0: O FF top
+    0x00, 0xD2,  // row 1
+    0x00, 0xDB,  // row 2: middle bar of F
+    0x00, 0xD2,  // row 3
+    0x00, 0xD2,  // row 4
+    0x00, 0x00,  // row 5 blank
+    0x00, 0x00,  // row 6 blank
+    0x00, 0x00,  // row 7 blank
+};
+
+static unsigned char show_questionMark[16] = { // shows "?"
+    0x00, 0x18,  // row 0: XXXX  top curve
+    0x00, 0x24,  // row 1: ...X  right side
+    0x00, 0x04,  // row 2: ...X  curl inward
+    0x00, 0x08,  // row 3: ....  blank gap
+    0x00, 0x08,  // row 4: ..X.  dot
+    0x00, 0x00,  // row 5 blank
+    0x00, 0x08,  // row 6 blank
+    0x00, 0x00,  // row 7 blank
+};
+
 
 static const unsigned char font[10][5] = {
    {0x07, 0x05, 0x05, 0x05, 0x07}, // 0
@@ -168,7 +190,17 @@ static bool matrix_write(const unsigned char *buf, unsigned int n)
 
 
 
-
+static void matrix_write_char(const unsigned char *glyph) // not from Baustein, as helper function
+{
+    buffer[0] = 0x00; // register address
+    for (int row = 0; row < 5; row++) {
+        buffer[row * 2 + 1] = glyph[row];
+    }
+    // blank remaining rows
+    for (int row = 5; row < 8; row++) {
+        buffer[row * 2 + 1] = 0x00;
+    }
+}
 
 
 
@@ -177,80 +209,54 @@ static bool matrix_write(const unsigned char *buf, unsigned int n)
 
 static bool matrix_distance(int dist)
 {
-   if (!matrix_ready())
-       return false;
+    if (!matrix_ready())
+        return false;
 
+    for (unsigned int i = 0; i < sizeof(buffer); i++)
+        buffer[i] = 0;  // clean buffer
 
-   /*
-    * Beispiel
-    * Nur jeder zweiter Eintrag wird auf der Matrix angezeigt.
-    * Der Kontroller ist für zwei Matrizen ausgelegt.
-    */
+    int n;
+    bool negative = false;  // flag for negative value
 
+    if (state.sonic == SONIC_STATE_ON) {
+        n = dist / 10;
+    } else {
+        matrix_write(show_off, sizeof(show_off));
+        matrix_distance(dist);
+    }
 
-   for (unsigned int i = 0; i < sizeof(buffer); i++) {
-       buffer[i] = 0;
-   }
+    // --- Negative: overshot target, too close ---
+    if (n < 0) {
+        negative = true;
+        n = -n;
+    }
 
+    // --- Overflow: show '?' ---
+    if (n > 64) {
+        unsigned char blink_cmd = 0x81;
+        while (!matrix_write(&blink_cmd, 1));
+        matrix_write(show_questionMark, sizeof(show_questionMark));
+        return true;
+    }
 
-   int n;
+    // --- Blink if negative ---
+    unsigned char blink_cmd = negative ? 0x83 : 0x81;
+    while (!matrix_write(&blink_cmd, 1));
 
-   if (state.sonic == SONIC_STATE_ON) {
-       n = dist/10;   // show distance
-   } else {
-       n = MY_LAB_NUMBER;  // show your lab computer number from Aufgabe 3
-   }
+    // --- Build dot pattern ---
+    buffer[0] = 0x00;
+    int64_t temp = 0;
+    for (int i = 0; i < n; i++) {
+        temp |= (int64_t)1 << i;
+    }
 
+    for (int i = 0; i < 8; i++) {
+        buffer[i * 2]     = 0x00;
+        buffer[i * 2 + 1] = (unsigned char)(temp >> (i * 8));
+    }
 
-   // SHOW DIGITS
-   // // ====================INHALT VON BUFFER MANIPULIEREN====================
-   // if (n < 0)  n = 0;
-   // if (n > 99) n = 99;
-
-
-   // int tens = n / 10;   // left digit
-   // int ones = n % 10;   // right digit
-
-
-   // buffer[0] = 0x00;    // register address
-
-
-   // for (int row = 0; row < 5; row++) {
-   //     unsigned char left  = font[tens][row] << 4;  // shift to bits 6-4
-   //     unsigned char right = font[ones][row] << 0;  // shift to bits 2-0
-   //     buffer[1 + row * 2] = left | right;
-   // }
-   // // remaining rows blank
-   // for (int row = 5; row < 8; row++)
-   //     buffer[1 + row * 2] = 0x00;
-
-
-   // // ========================================================================
-   //
-  
-   // TODO turn on each LED based on dist
-   if (n < 0)  n = 0;  // invert bit when minus // absolut
-   if (n > 64) n = 64;
-   buffer[0] = 0x00;    // register address
-
-
-   // Build the bit
-   int64_t temp=0;
-   for (int i = 0; i < n; ++i) {
-       temp|= (1 <<i) ;
-   }
-
-
-   // Put the bits from temp in the buffer, only in odd, the rest even will be written as 0x00
-   for(int i =0; i<8; ++i) {
-       buffer[i*2] = 0x00;
-       buffer[i*2 + 1] = ( temp >> (i*8) ) ;   // buffer is unsigned char with 8 bit length, so only the first 8 bit will be taken
-       // the bits in temp will be
-   }
-
-
-   matrix_write(buffer, sizeof(buffer));
-   return true;
+    matrix_write(buffer, sizeof(buffer));
+    return true;
 }
 
 
