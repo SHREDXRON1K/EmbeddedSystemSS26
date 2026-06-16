@@ -55,7 +55,7 @@ void drive_init()
     // von Karesse
 
     //PWM Frequenz festlegen (schnelles Ein- und Ausschalten, um die Motorleistung zu steuern.)
-    uint32_t pwm = 100;   //100hz
+    uint32_t pwm = 100;   // 100 = 100hz    // gotta be careful, dont set to fast otherwise the motor will burn
 
     //startwerte festlegen und timer starten
     TC2_RC0 = MCK2 / pwm;  //Rc bestimmt die PMW frequenz 
@@ -77,10 +77,10 @@ void drive_loop()
 
     // von Karesse
     int32_t dist = (int32_t )value.sonic.distance - (int32_t )value.goal;
-    int32_t led_On = dist / 10;
+    int32_t led_On = dist / 3; // // gotta be careful, set the divisor so the motor will not burn  // without car model, 3 is good
     
     if(led_On > 64 ){
-        int32_t motionWert = 90;
+        int32_t motionWert = 70;
         value.motion = motionWert;
     }
     else{
