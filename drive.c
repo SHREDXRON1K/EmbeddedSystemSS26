@@ -23,15 +23,20 @@ void drive_init()
 {
     // Step 1   Turn On Clock
     PMC_PCER0 = 1u << PIOC_ID; // =======
-    PMC_PCER1 = 1u << TC6_ID % 32; // tc6 id is 33 // ID is 33, shoulnt it be PCER1 ???
+    PMC_PCER1 = 1u << (TC6_ID % 32); // tc6 id is 33 // ID is 33, shoulnt it be PCER1 ???
 
     // Step 2
+    PIOC_PER = PIOC_PER_P25; // enable register for PIOC23 and 24
+    PIOC_OER = PIOC_PER_P25; // set as output register for PIOC23 and 24
+    PIOC_CODR = PIOC_PER_P25; // clear output datas register for PIOC23 and 24
+
+
     PIOC_PER = PIOC_PER_P23 | PIOC_PER_P24; // enable register for PIOC23 and 24
     PIOC_OER = PIOC_PER_P23 | PIOC_PER_P24; // set as output register for PIOC23 and 24
     PIOC_CODR = PIOC_PER_P23 | PIOC_PER_P24; // clear output datas register for PIOC23 and 24
 
     //PWM Output
-    PIOC_PDR = PIOC_PDR_P25; // disable register -> give the pin, peripheral takes it
+    //PIOC_PDR = PIOC_PDR_P25; // disable register -> give the pin, peripheral takes it
     PIOC_ABSR |= PIOC_ABSR_P25; // choose peripheral B. TIOA6 is at B
 
     TC2_CCR0 = TC2_CCR0_CLKDIS;  // Erstmal Clock stoppen — sicher ist sicher
@@ -44,7 +49,7 @@ void drive_init()
         TC2_CMR0_ACPA_CLEAR     |  // Bei RA: TIOA → LOW
         TC2_CMR0_ACPC_SET       |  // Bei RC: TIOA → HIGH
         TC2_CMR0_EEVT_XC0       |  // Externes Event = XC0 (damit TIOB als Output frei ist)
-        TC2_CMR0_TCCLKS_TIMER_CLOCK2; // Prescaler MCK/8
+        TC2_CMR0_TCCLKS_TIMER_CLOCK1; // Prescaler MCK/2
 
 
     // // Step 4   Set RA, RC
@@ -55,19 +60,19 @@ void drive_init()
     // von Karesse
 
     //PWM Frequenz festlegen (schnelles Ein- und Ausschalten, um die Motorleistung zu steuern.)
-    uint32_t pwm = 100;   // 100 = 100hz    // gotta be careful, dont set to fast otherwise the motor will burn
+    uint32_t pwm = 100;   // f in hz    // gotta be careful, dont set to slow otherwise the motor will burn
 
     //startwerte festlegen und timer starten
-    TC2_RC0 = MCK2 / pwm;  //Rc bestimmt die PMW frequenz 
+    TC2_RC0 = (MCK2) / pwm;  //Rc bestimmt die PMW frequenz 
 
-    TC2_RA0 = TC2_RC0 * (value.motion)/ 100 ; //RA bestimmt den duty cycle (duty cycle 30 %)
+    TC2_RA0 = 0; //TC2_RC0 * (value.motion)/ 100 ; //RA bestimmt den duty cycle (duty cycle 30 %), value motion in percentage (that's why divided by 100)
 
 
 
 
     // Step 5   Start Timer
     TC2_CCR0 = TC2_CCR0_CLKEN | TC2_CCR0_SWTRG;
-
+    PIOC_PDR = PIOC_PER_P25; // enable register for PIOC23 and 24
 
     // TODO
 }
@@ -76,15 +81,26 @@ void drive_loop()
 {
 
     // von Karesse
-    int32_t dist = (int32_t )value.sonic.distance - (int32_t )value.goal;
-    int32_t led_On = dist / 3; // // gotta be careful, set the divisor so the motor will not burn  // without car model, 3 is good
-    
-    if(led_On > 64 ){
-        int32_t motionWert = 70;
+    int32_t dist = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
+    // int32_t led_On = dist ; // // gotta be careful, set the divisor so the motor will not burn  // without car model, 3 is good
+    int32_t motionWert = 0;
+
+    int32_t dist1 = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
+    int32_t dist2 = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
+    int32_t dist3 = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
+    int32_t dist4 = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
+    int32_t dist5 = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
+
+    int32_t dist_mean = (dist1 + dist2 + dist3 + dist4 + dist5) / 5;
+
+
+    if(dist > 64 ){
+        motionWert = 100;
         value.motion = motionWert;
     }
     else{
-        int32_t motionWert = led_On;
+        
+        motionWert = dist_mean;
         value.motion = motionWert;
     }
 
@@ -96,23 +112,23 @@ void drive_loop()
     }
     else
     {
-        PIOC_PER = PIOC_PER_P25;
-        PIOC_CODR = PIOC_CODR_P23 | PIOC_CODR_P24;
-        TC2_RA0 = 0;
+        PIOC_PER = PIOC_PER_P25; // pwm signal
+        PIOC_CODR = PIOC_CODR_P23 | PIOC_CODR_P24;  // activate IN1 & IN2
+        TC2_RA0 = 0; // set RA as 0
     }
     // ==== BAUSTEIN =====
 
 
     // von Karesse
     // Richtung setzen
-    float motionWert = value.motion;
+    //float motionWert = value.motion;
 
-    if(motionWert > 0){
+    if(state.motion == MOTION_STATE_ON && motionWert > 0){  // always check if state.motion is ON 
         //IN1 0 IN2 1   01-> vorwärts
         PIOC_CODR = PIOC_CODR_P23;
         PIOC_SODR = PIOC_SODR_P24;
     }
-    else if(motionWert < 0){
+    else if(state.motion == MOTION_STATE_ON && motionWert < 0){ // always check if state.motion is ON 
         //IN1 1 IN2 0   10-> rückwärts
         PIOC_SODR = PIOC_SODR_P23;
         PIOC_CODR = PIOC_CODR_P24;
@@ -124,10 +140,6 @@ void drive_loop()
         TC2_RA0 = 0;
         return;
     }
-
-
-
-
 
     // TODO
 
@@ -147,7 +159,11 @@ void drive_loop()
     // ==== BAUSTEIN =====
 
 
-    float duty = (motionWert / 100.0f) * (float)TC2_RC0;
-    TC2_RA0 = (uint32_t)duty;
+    //float duty = (motionWert / 100.0f) * (float)TC2_RC0;    // value motion in percentage (that's why divided by 100)
+    
+    //TC2_RA0 = (uint32_t)duty;
+    int duty_int = 0;
+    duty_int = TC2_RC0 * motionWert / 100;
+    TC2_RA0 = duty_int;
 
 }
