@@ -64,7 +64,7 @@ static void trigger_init(void)
 
     // 4) Wave-Modus konfigurieren
     TC2_CMR1 =
-        TC2_CMR1_TCCLKS_TIMER_CLOCK1 |  // Prescaler MCK/32
+        TC2_CMR1_TCCLKS_TIMER_CLOCK1 |  // Prescaler MCK/2
         TC2_CMR1_WAVE                |  // Wave-Modus
         TC2_CMR1_WAVSEL_UP_RC        |  // Reset bei RC
         TC2_CMR1_EEVT_XC0            |  // TIOB als Ausgang
@@ -140,12 +140,14 @@ void TC8_Handler(void) {
         double zeit = (double)ticks/ (double)MCK32;
 
         //entfernung in meter
-        double dist_meter = (double)zeit * (double)SONIC_SPEED/2;
+        double dist_meter = zeit * (double)SONIC_SPEED/2;
 
         //Entfernung in mm
         double dist_Millimeter = dist_meter*1000;
 
-        value.sonic.distance = dist_Millimeter; // save in global state
+        int32_t dist_mm_INT32 = (int32_t)dist_Millimeter;
+
+        value.sonic.distance = dist_mm_INT32; // save in global state
         value.sonic.new = true;
     }
 

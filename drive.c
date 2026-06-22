@@ -19,6 +19,33 @@
 #include <state.h>
 #include <sam.h>
 
+// tuning the motor to hinder the deadzone motion problem
+#define MOTION_MAX 100 
+#define MOTION_MIN 20
+#define MOTION_OFF 0
+
+#define AVG_WINDOW 5
+
+static unsigned int distance_history[AVG_WINDOW] = {0};
+static unsigned int history_index = 0;
+static unsigned int history_count = 0;
+
+static unsigned int distance_average(unsigned int new_value)
+{
+    distance_history[history_index] = new_value;
+    history_index = (history_index + 1) % AVG_WINDOW;
+
+    if (history_count < AVG_WINDOW)
+        history_count++;
+
+    unsigned int sum = 0;
+    for (unsigned int i = 0; i < history_count; i++)
+        sum += distance_history[i];
+
+    return sum / history_count;
+}
+
+
 void drive_init()
 {
     // Step 1   Turn On Clock
@@ -49,7 +76,7 @@ void drive_init()
         TC2_CMR0_ACPA_CLEAR     |  // Bei RA: TIOA → LOW
         TC2_CMR0_ACPC_SET       |  // Bei RC: TIOA → HIGH
         TC2_CMR0_EEVT_XC0       |  // Externes Event = XC0 (damit TIOB als Output frei ist)
-        TC2_CMR0_TCCLKS_TIMER_CLOCK1; // Prescaler MCK/2
+        TC2_CMR0_TCCLKS_TIMER_CLOCK2; // Prescaler MCK/2
 
 
     // // Step 4   Set RA, RC
@@ -63,7 +90,7 @@ void drive_init()
     uint32_t pwm = 100;   // f in hz    // gotta be careful, dont set to slow otherwise the motor will burn
 
     //startwerte festlegen und timer starten
-    TC2_RC0 = (MCK2) / pwm;  //Rc bestimmt die PMW frequenz 
+    TC2_RC0 = (MCK/8) / pwm;  //Rc bestimmt die PMW frequenz 
 
     TC2_RA0 = 0; //TC2_RC0 * (value.motion)/ 100 ; //RA bestimmt den duty cycle (duty cycle 30 %), value motion in percentage (that's why divided by 100)
 
@@ -81,26 +108,24 @@ void drive_loop()
 {
 
     // von Karesse
-    int32_t dist = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
-    // int32_t led_On = dist ; // // gotta be careful, set the divisor so the motor will not burn  // without car model, 3 is good
-    int32_t motionWert = 0;
+    int32_t smoothed_distance = (int32_t)distance_average(value.sonic.distance);
+    int32_t goal_distance = (int32_t)value.goal;
 
-    int32_t dist1 = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
-    int32_t dist2 = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
-    int32_t dist3 = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
-    int32_t dist4 = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
-    int32_t dist5 = ((int32_t )value.sonic.distance - (int32_t )value.goal ) /10;
+    int32_t dist_mm = (smoothed_distance - goal_distance);
+    int32_t dist_cm = dist_mm / 10;
 
-    int32_t dist_mean = (dist1 + dist2 + dist3 + dist4 + dist5) / 5;
+    int32_t motionWert = 0; // this variable will be shown on minicom (m motion) 
 
-
-    if(dist > 64 ){
-        motionWert = 100;
+    if(dist_cm > 64 ){
+        motionWert = MOTION_MAX;
         value.motion = motionWert;
     }
     else{
-        
-        motionWert = dist_mean;
+        motionWert = dist_cm;
+
+        if (motionWert <= MOTION_MIN && motionWert > 0) motionWert = MOTION_MIN;  // to hinder the deadzone motor problem
+        if (motionWert == 0) motionWert = MOTION_OFF;  // to hinder the deadzone motor problem
+
         value.motion = motionWert;
     }
 
@@ -132,7 +157,7 @@ void drive_loop()
         //IN1 1 IN2 0   10-> rückwärts
         PIOC_SODR = PIOC_SODR_P23;
         PIOC_CODR = PIOC_CODR_P24;
-        motionWert = -motionWert;
+        motionWert = -1 * 10; // set with minimum torque to hinder deadzone problem
     }
     else{
         //IN1 0 IN2 0   00-> stop
@@ -163,7 +188,7 @@ void drive_loop()
     
     //TC2_RA0 = (uint32_t)duty;
     int duty_int = 0;
-    duty_int = TC2_RC0 * motionWert / 100;
+    duty_int = TC2_RC0 * motionWert / 100;  // value motion in percentage (that's why divided by 100)
     TC2_RA0 = duty_int;
 
 }
