@@ -127,69 +127,43 @@ static bool matrix_ready()
 
 static bool matrix_write(const unsigned char *buf, unsigned int n)
 {
-
     if (!matrix_ready()) return false;
-
-   // TODO
   
-   // BYTE TO BYTE TRANSFER
-   // for (unsigned int i = 0; i < n; i++)
-   // {
-   //     // start condition
-   //     if (i==0) TWI1_CR = TWI1_CR_START;
+    // ===== BYTE TO BYTE TRANSFER =====
+    // for (unsigned int i = 0; i < n; i++)
+    // {
+    //     // start condition
+    //     if (i==0) TWI1_CR = TWI1_CR_START;
 
+    //     // wait
+    //     while (!(TWI1_SR & TWI1_SR_TXRDY));
 
-   //     // warten
-   //     while (!(TWI1_SR & TWI1_SR_TXRDY));
+    //     // check if slave sent NACK — address wrong or device not responding
+    //     if (TWI1_SR & TWI1_SR_NACK)
+    //         return false;
 
-
-   //     // check if slave sent NACK — address wrong or device not responding
-   //     if (TWI1_SR & TWI1_SR_NACK)
-   //         return false;
-
-
-   //     // data schicken
-   //     TWI1_THR = buf[i];
-   // }
-
-
-
-
-   // // STOP
-   // TWI1_CR = TWI1_CR_STOP;
-   // while (!(TWI1_SR & TWI1_SR_TXCOMP));
-
-
-   // return true;
-
-
-   // ==================DMA (Direct Memory Access)==================
-   // setup DMA first
-   TWI1_TPR = (uint32_t)buf;   // put buffer in Transfer Pointer Register
-   TWI1_TCR = n;               // set the Transfer Counter Register with the length of buffer
-   TWI1_PTCR = TWI1_PTCR_TXTEN;// set the Peripheral Transfer Control Register. Writing TXTEN activates the DMA channel for TWI1 transmission
-
-
-   TWI1_CR = TWI1_CR_START;    // start
-
-
-    // while (!(TWI1_SR & TWI1_SR_TXRDY)); // wait for DMA to finish all but last byte
-
-    // // check NACK
-    // if (TWI1_SR & TWI1_SR_NACK) {
-    //     TWI1_CR = TWI1_CR_STOP;
-    //     while (!(TWI1_SR & TWI1_SR_TXCOMP));
-    //     TWI1_PTCR = TWI1_PTCR_TXTDIS;
-    //     return false;
+    //     // send data
+    //     TWI1_THR = buf[i];
     // }
 
+    // // STOP
     // TWI1_CR = TWI1_CR_STOP;
     // while (!(TWI1_SR & TWI1_SR_TXCOMP));
-    // TWI1_PTCR = TWI1_PTCR_TXTDIS;
 
     // return true;
 
-        // wait for DMA to push all bytes — but bounded, not infinite
+    // ===== BYTE TO BYTE TRANSFER =====
+
+
+    // ==================DMA (Direct Memory Access)==================
+    // setup DMA first
+    TWI1_TPR = (uint32_t)buf;   // put buffer in Transfer Pointer Register
+    TWI1_TCR = n;               // set the Transfer Counter Register with the length of buffer
+    TWI1_PTCR = TWI1_PTCR_TXTEN;// set the Peripheral Transfer Control Register. Writing TXTEN activates the DMA channel for TWI1 transmission
+
+    TWI1_CR = TWI1_CR_START;    // start
+
+    // wait for DMA to push all bytes — but bounded, not infinite
     uint32_t timeout = 100000;
     while (!(TWI1_SR & TWI1_SR_TXRDY)) {
         if (--timeout == 0) {
@@ -207,7 +181,6 @@ static bool matrix_write(const unsigned char *buf, unsigned int n)
     // check NACK — and ALWAYS issue STOP regardless of NACK or not,
     // so the bus is left in a clean state either way
     bool nacked = (TWI1_SR & TWI1_SR_NACK) != 0;
-
     TWI1_CR = TWI1_CR_STOP;
 
     timeout = 100000;
@@ -218,8 +191,6 @@ static bool matrix_write(const unsigned char *buf, unsigned int n)
     TWI1_PTCR = TWI1_PTCR_TXTDIS;
 
     return !nacked;
-
-
 }
 
 
@@ -257,7 +228,6 @@ static bool matrix_distance(int dist)
     } else {
         matrix_write(show_off, sizeof(show_off));
         return true;
-        // matrix_distance(dist);
     }
 
     // --- Negative: overshot target, too close ---
@@ -297,29 +267,26 @@ static bool matrix_distance(int dist)
 
 void matrix_init(void)
 {
-   // TODO
-   PMC_PCER0 = PMC_PCER0_PID23; // turn on clock for twi1 c
+    PMC_PCER0 = PMC_PCER0_PID23; // turn on clock for twi1 c
   
-   PIOB_PDR |= (1<<12) | (1<<13);
-   PIOB_ABSR &= ~((1 << 12) | (1 << 13));
+    PIOB_PDR |= (1<<12) | (1<<13);
+    PIOB_ABSR &= ~((1 << 12) | (1 << 13));
 
-
-   TWI1_CR = TWI1_CR_SWRST;
+    TWI1_CR = TWI1_CR_SWRST;
 
     // give the matrix chip's power rail/oscillator a moment to settle
     for (volatile uint32_t i = 0; i < 50000; i++);
 
-
-  // Config mode master
-  TWI1_CR = TWI1_CR_MSEN; // cest le master ic qui sendet les daten au slave led
-
-
-  // Config
-  TWI1_CWGR = (13 << 0) | (13 << 8) | (5 << 16);
+    // Config mode master
+    TWI1_CR = TWI1_CR_MSEN; // cest le master ic qui sendet les daten au slave led
 
 
-  // Adresse von matrix
-//    TWI1_MMR = (0x70 << 16);  // adresse I2C
+    // Config
+    TWI1_CWGR = (13 << 0) | (13 << 8) | (5 << 16);
+
+
+    // Adresse von matrix
+    //    TWI1_MMR = (0x70 << 16);  // adresse I2C
     TWI1_MMR = (0x70 << 16) & ~TWI1_MMR_MREAD;
  
  
@@ -344,8 +311,6 @@ void matrix_init(void)
     while (!matrix_write(buffer, sizeof(buffer))) {
         if (--timeout == 0) break;
     }
- 
-  // TODO
 
 }
 
@@ -353,7 +318,7 @@ void matrix_init(void)
 void matrix_loop(void)
 {
    matrix_distance(value.sonic.distance - value.goal); 
-   // matrix_write(buffer, 16); // beispiel von zahl // Already called in matrix distance
+   // matrix_write(buffer, 16); // example number // Already called in matrix distance
 } 
 
 

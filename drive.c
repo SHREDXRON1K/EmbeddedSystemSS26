@@ -30,7 +30,7 @@ static unsigned int distance_history[AVG_WINDOW] = {0};
 static unsigned int history_index = 0;
 static unsigned int history_count = 0;
 
-static unsigned int distance_average(unsigned int new_value)
+static unsigned int distance_average(unsigned int new_value)    // take 5 distance values to smoothen the calculation
 {
     distance_history[history_index] = new_value;
     history_index = (history_index + 1) % AVG_WINDOW;
@@ -50,83 +50,67 @@ void drive_init()
 {
     // Step 1   Turn On Clock
     PMC_PCER0 = 1u << PIOC_ID; // =======
-    PMC_PCER1 = 1u << (TC6_ID % 32); // tc6 id is 33 // ID is 33, shoulnt it be PCER1 ???
+    PMC_PCER1 = 1u << (TC6_ID % 32); // tc6 id is 33, should be placed in register PCER1
 
     // Step 2
     PIOC_PER = PIOC_PER_P25; // enable register for PIOC23 and 24
     PIOC_OER = PIOC_PER_P25; // set as output register for PIOC23 and 24
-    PIOC_CODR = PIOC_PER_P25; // clear output datas register for PIOC23 and 24
-
+    PIOC_CODR = PIOC_PER_P25; // clear output data register for PIOC23 and 24
 
     PIOC_PER = PIOC_PER_P23 | PIOC_PER_P24; // enable register for PIOC23 and 24
     PIOC_OER = PIOC_PER_P23 | PIOC_PER_P24; // set as output register for PIOC23 and 24
     PIOC_CODR = PIOC_PER_P23 | PIOC_PER_P24; // clear output datas register for PIOC23 and 24
 
     //PWM Output
-    //PIOC_PDR = PIOC_PDR_P25; // disable register -> give the pin, peripheral takes it
     PIOC_ABSR |= PIOC_ABSR_P25; // choose peripheral B. TIOA6 is at B
-
-    TC2_CCR0 = TC2_CCR0_CLKDIS;  // Erstmal Clock stoppen — sicher ist sicher
-    TC2_CCR0 = TC2_CCR0_SWTRG;   // Software Reset des Counters
+    TC2_CCR0 = TC2_CCR0_CLKDIS;  // Disable CLK, security!
+    TC2_CCR0 = TC2_CCR0_SWTRG;   // Software Reset the Counter
 
     // Step 3   Configure TC2
     TC2_CMR0 =
-        TC2_CMR0_WAVE           |  // Wave Mode (nicht Capture)
-        TC2_CMR0_WAVSEL_UP_RC   |  // Zähle hoch, Reset bei RC
-        TC2_CMR0_ACPA_CLEAR     |  // Bei RA: TIOA → LOW
-        TC2_CMR0_ACPC_SET       |  // Bei RC: TIOA → HIGH
-        TC2_CMR0_EEVT_XC0       |  // Externes Event = XC0 (damit TIOB als Output frei ist)
-        TC2_CMR0_TCCLKS_TIMER_CLOCK2; // Prescaler MCK/2
-
+        TC2_CMR0_WAVE           |  // Wave Mode
+        TC2_CMR0_WAVSEL_UP_RC   |  // count++, Reset when ==RC
+        TC2_CMR0_ACPA_CLEAR     |  // when RA: TIOA LOW
+        TC2_CMR0_ACPC_SET       |  // when RC: TIOA HIGH
+        TC2_CMR0_EEVT_XC0       |  // External Event = XC0 (so TIOB as Output is free)
+        TC2_CMR0_TCCLKS_TIMER_CLOCK2; // Prescaler MCK/8
 
     // // Step 4   Set RA, RC
-    // TC2_RC0 = 1050;   // Periode → 10,5 MHz / 1050 = 10 kHz PWM
-    // TC2_RA0 = 0;      // Duty Cycle = 0% beim Start (Motor steht)
-
-
-    // von Karesse
-
-    //PWM Frequenz festlegen (schnelles Ein- und Ausschalten, um die Motorleistung zu steuern.)
-    uint32_t pwm = 100;   // f in hz    // gotta be careful, dont set to slow otherwise the motor will burn
-
-    //startwerte festlegen und timer starten
-    TC2_RC0 = (MCK/8) / pwm;  //Rc bestimmt die PMW frequenz 
-
-    TC2_RA0 = 0; //TC2_RC0 * (value.motion)/ 100 ; //RA bestimmt den duty cycle (duty cycle 30 %), value motion in percentage (that's why divided by 100)
-
-
+    //PWM Frequency (schnelles Ein- und Ausschalten, um die Motorleistung zu steuern.)
+    uint32_t pwm = 100;   // f in hz    // why 100? In Documentation!
+    TC2_RC0 = (MCK/8) / pwm;  // Value for register RC
+    TC2_RA0 = 0; // Start value Register RA
 
 
     // Step 5   Start Timer
-    TC2_CCR0 = TC2_CCR0_CLKEN | TC2_CCR0_SWTRG;
-    PIOC_PDR = PIOC_PER_P25; // enable register for PIOC23 and 24
-
-    // TODO
+    TC2_CCR0 = TC2_CCR0_CLKEN | TC2_CCR0_SWTRG;     // Software enable | Software Trigger
+    PIOC_PDR = PIOC_PDR_P25;    // disable P25?
 }
 
 void drive_loop()
 {
 
-    // von Karesse
-    int32_t smoothed_distance = (int32_t)distance_average(value.sonic.distance);
+    int32_t smoothed_distance = (int32_t)distance_average(value.sonic.distance);    // take the average from 5 distance values
     int32_t goal_distance = (int32_t)value.goal;
 
-    int32_t dist_mm = (smoothed_distance - goal_distance);
+    int32_t dist_mm = (smoothed_distance - goal_distance);  // distance shown in matrix : x left to meet the target 
     int32_t dist_cm = dist_mm / 10;
 
-    int32_t motionWert = 0; // this variable will be shown on minicom (m motion) 
+    int32_t motionValue = 0; // this variable will be shown on minicom (m motion) 
 
-    if(dist_cm > 64 ){
-        motionWert = MOTION_MAX;
-        value.motion = motionWert;
+    if (dist_cm > 64) 
+    {   // overflow in led matrix (? will be shown)
+        motionValue = MOTION_MAX;
+        value.motion = motionValue;
     }
-    else{
-        motionWert = dist_cm;
-
-        if (motionWert <= MOTION_MIN && motionWert > 0) motionWert = MOTION_MIN;  // to hinder the deadzone motor problem
-        if (motionWert == 0) motionWert = MOTION_OFF;  // to hinder the deadzone motor problem
-
-        value.motion = motionWert;
+    else 
+    {
+        motionValue = dist_cm;  // the easiest way to make it slower and slower...
+        // these ifs are to hinder the deadzone motor problem
+        if (motionValue <= MOTION_MIN && motionValue > 0) motionValue = MOTION_MIN;  // when value > 0
+        if (motionValue >= -MOTION_MIN && motionValue < 0) motionValue = -MOTION_MIN;  // when value < 0
+        if (motionValue == 0) motionValue = MOTION_OFF;  // when value 0
+        value.motion = motionValue;
     }
 
 
@@ -144,20 +128,17 @@ void drive_loop()
     // ==== BAUSTEIN =====
 
 
-    // von Karesse
     // Richtung setzen
-    //float motionWert = value.motion;
-
-    if(state.motion == MOTION_STATE_ON && motionWert > 0){  // always check if state.motion is ON 
+    if(state.motion == MOTION_STATE_ON && motionValue > 0){  // always check if state.motion is ON 
         //IN1 0 IN2 1   01-> vorwärts
         PIOC_CODR = PIOC_CODR_P23;
         PIOC_SODR = PIOC_SODR_P24;
     }
-    else if(state.motion == MOTION_STATE_ON && motionWert < 0){ // always check if state.motion is ON 
+    else if(state.motion == MOTION_STATE_ON && motionValue < 0){ // always check if state.motion is ON 
         //IN1 1 IN2 0   10-> rückwärts
         PIOC_SODR = PIOC_SODR_P23;
         PIOC_CODR = PIOC_CODR_P24;
-        motionWert = -1 * 10; // set with minimum torque to hinder deadzone problem
+        motionValue = -motionValue; // set with minimum torque to hinder deadzone problem // to control the backwards speed is not implemented here actually 
     }
     else{
         //IN1 0 IN2 0   00-> stop
@@ -166,7 +147,9 @@ void drive_loop()
         return;
     }
 
-    // TODO
+    int duty_int = 0;
+    duty_int = TC2_RC0 * motionValue / 100;  // value motion in percentage (that's why divided by 100)
+    TC2_RA0 = duty_int;
 
     // ==== BAUSTEIN =====
     // if (!(PIOC_ODSR & PIOC_PDSR_P23) && (PIOC_ODSR & PIOC_PDSR_P24))
@@ -182,13 +165,5 @@ void drive_loop()
     //     value.motion = 0;
     // }
     // ==== BAUSTEIN =====
-
-
-    //float duty = (motionWert / 100.0f) * (float)TC2_RC0;    // value motion in percentage (that's why divided by 100)
-    
-    //TC2_RA0 = (uint32_t)duty;
-    int duty_int = 0;
-    duty_int = TC2_RC0 * motionWert / 100;  // value motion in percentage (that's why divided by 100)
-    TC2_RA0 = duty_int;
 
 }

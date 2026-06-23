@@ -30,10 +30,10 @@
 #define SONIC_SPEED 343
 
 
-// volatile nötig weil Variable außerhalb des Handlers gelesen wird
-// ohne volatile könnte der Compiler den Wert wegoptimieren
+// volatile needed since variable outside the handler will be read
+// without volatile : compiler could not optimize the value
 volatile uint32_t distance_cm = 0;
-volatile uint8_t  new_measurement = 0; // Flag: neue Messung liegt vor
+volatile uint8_t  new_measurement = 0; // Flag: new Measurement
 
 
 static inline void trigger_enable(void)
@@ -48,118 +48,98 @@ static inline void trigger_disable(void)
 
 static void trigger_init(void)
 {
-    // TO DO
     // Aufgabe 1
-    // --- TC7: Wave-Modus, Trigger-Signal an TIOB7 / PIOC29 ---
+    // --- TC7: Wave-Mode, Trigger-Signal TIOB7 / PIOC29 ---
 
-    // 1) Pin PIOC29 als Peripherie B freischalten (TIOB7)
-    PIOC_PDR  =  1u << 29;   // PIO gibt Pin-Kontrolle ab
-    PIOC_ABSR |= 1u << 29;   // Peripheral B auswählen (= TIOB7)
+    // 1) make Pin PIOC29 as Peripheral B available (TIOB7)
+    PIOC_PDR  =  1u << 29;   // PIO release Pin Control
+    PIOC_ABSR |= 1u << 29;   // choose Peripheral B (= TIOB7)
 
-    // 2) Clock für TC7 aktivieren (ID=34 → PCER1)
-    PMC_PCER1 = 1u << TC7_ID % 32;
+    // 2) activate Clock for TC7 (ID=34 -> PCER1)
+    PMC_PCER1 = 1u << (TC7_ID % 32);
 
-    // 3) Timer stoppen vor Konfiguration
+    // 3) stop Timer before Konfiguration
     TC2_CCR1 = TC2_CCR1_CLKDIS;
 
-    // 4) Wave-Modus konfigurieren
+    // 4) configure Wave-Modus
     TC2_CMR1 =
         TC2_CMR1_TCCLKS_TIMER_CLOCK1 |  // Prescaler MCK/2
-        TC2_CMR1_WAVE                |  // Wave-Modus
-        TC2_CMR1_WAVSEL_UP_RC        |  // Reset bei RC
-        TC2_CMR1_EEVT_XC0            |  // TIOB als Ausgang
-        TC2_CMR1_BSWTRG_SET          |  // HIGH beim Software-Trigger
-        TC2_CMR1_BCPB_CLEAR          |  // LOW bei RB (~10 µs)
-        TC2_CMR1_BCPC_SET;              // HIGH bei RC (neuer Zyklus)
+        TC2_CMR1_WAVE                |  // Wave-Mode
+        TC2_CMR1_WAVSEL_UP_RC        |  // Reset when ==RC
+        TC2_CMR1_EEVT_XC0            |  // TIOB as Ausgang
+        TC2_CMR1_BSWTRG_SET          |  // HIGH when Software-Trigger
+        TC2_CMR1_BCPB_CLEAR          |  // LOW when ==RB (~10 µs)
+        TC2_CMR1_BCPC_SET;              // HIGH when ==RC (neuer Zyklus)
 
-    // 5) Zeitwerte setzen
-    //TC2_RB1 = 27;       // ~10 µs High-Impuls
-    //TC2_RC1 = 157500;   // ~60 ms Periode (oder 52500 für 20 ms)
-
+    // 5) set time values (RB, RC)
     TC2_RC1 = MCK2 / 10;        // (1 / 10)s = 100ms
     TC2_RB1 = MCK2 / 100000;    // (1 / 100000)s = 10us
 
     // 6) Timer starten
     TC2_CCR1 = TC2_CCR1_CLKEN | TC2_CCR1_SWTRG;
-
-
 }
 
 static void echo_init(void)
 {
-    // TODO
-    PIOD_PDR = 1u << 7;  //pio control ein
+    PIOD_PDR = 1u << 7;  //pio control on
     PIOD_ABSR |= 1u << 7;   
 
     PMC_PCER1 = PMC_PCER1_PID35;
 
-
-    //timer stppen zum konfigurieren
+    //stop timer to configure
     TC2_CCR2 = TC2_CCR2_CLKDIS;
 
     //capture mode (wave = 0)
     TC2_CMR2 = TC2_CMR2_TCCLKS_TIMER_CLOCK3
-             | TC2_CMR2_LDRA_RISING //RA bei dteigender Flanke
-             | TC2_CMR2_LDRB_FALLING //RB bei sinkender flanke
-             | TC2_CMR2_LDBSTOP //Stoppe der counter wenn rb geladen wird 
-             //| TC2_CMR2_CPCTRG; //Zurücksetzen durch RC , falls nicht gestoppt durch ldbstop
-             | TC2_CMR2_ABETRG; //TIOA als externer trigger
+             | TC2_CMR2_LDRA_RISING //RA at rising
+             | TC2_CMR2_LDRB_FALLING //RB at sinking
+             | TC2_CMR2_LDBSTOP //stop the counter when rb is loaded 
+             //| TC2_CMR2_CPCTRG; //reset through RC , in case not stopped by ldbstop
+             | TC2_CMR2_ABETRG; //TIOA as external trigger
 
-
-    TC2_RC2 = 0xFFFFFFFF;
+    TC2_RC2 = 0xFFFFFFFF;   // deactivate RC2
 
     #if USE_INTERRUPT
-        TC2_IDR2 = 0xFFFFFFFF;  // Interupts deaktivieren 
-        TC2_IER2 = TC2_IER2_LDRBS; //aktiviert den Interupt für den load event
-        NVIC_EnableIRQ(TC8_ID); //NVIC->ISER[1] |= (1<<(TC8_ID % 32));
+        TC2_IDR2 = 0xFFFFFFFF;  // deactive Interupts 
+        TC2_IER2 = TC2_IER2_LDRBS; //activate the Interupt for the load event
+        NVIC_EnableIRQ(TC8_ID); //NVIC->ISER[1] |= (1<<(TC8_ID % 32)); // TC8_ID is actually > 32, but the function itself already handles it
     #endif
-    TC2_CCR2 = TC2_CCR2_CLKEN | TC2_CCR2_SWTRG;
+
+    TC2_CCR2 = TC2_CCR2_CLKEN | TC2_CCR2_SWTRG; // activate
 }
 
 
 void TC8_Handler(void) {
 
-    // 1) SR lesen – PFLICHT!
-    //    Löscht alle Flags, verhindert sofortige erneute Auslösung
+    // 1) read SR!
+    //    remove all Flags, to hinder sudden updated Auslösung
     uint32_t status = TC2_SR2;
 
-    // 2) Prüfen ob wirklich LDRBS ausgelöst hat
+    // 2) check LDRBS really ausgelöst
     if (status & TC2_SR2_LDRBS) {
 
-        // 3) Messwerte auslesen
+        // 3) read measurement
         uint32_t ra = TC2_RA2;   // Echo-Start
         uint32_t rb = TC2_RB2;   // Echo-Ende
-
    
-        // 4) Distanz berechnen
+        // 4) count the time
         uint32_t ticks = rb - ra;
-        // Distanz [cm] = ticks * 32 * 340 * 100 / (84.000.000 * 2)
 
-        // 5) Ergebnis global speichern für Aufgabe 4
-        //zeitdauer in sekunden 
-        double zeit = (double)ticks/ (double)MCK32;
-
-        //entfernung in meter
-        double dist_meter = zeit * (double)SONIC_SPEED/2;
-
-        //Entfernung in mm
-        double dist_Millimeter = dist_meter*1000;
-
-        int32_t dist_mm_INT32 = (int32_t)dist_Millimeter;
-
-        value.sonic.distance = dist_mm_INT32; // save in global state
-        value.sonic.new = true;
+        // 5) save result in global for Aufgabe 4
+        double time = (double)ticks / (double)MCK32;    // time in second // using double at first only for precision
+        double distance_meter = time * (double)SONIC_SPEED/2;
+        double distance_millimeter = distance_meter*1000;
+        int32_t distance_millimeter_INT32 = (int32_t)distance_millimeter;
+        value.sonic.distance = distance_millimeter_INT32; // save in global state in millimeter
+        value.sonic.new = true; // update state
     }
 
-    // 6) Neue Messung starten für nächsten Zyklus
-    TC2_CCR2 = TC2_CCR2_CLKEN | TC2_CCR2_SWTRG;
+    TC2_CCR2 = TC2_CCR2_CLKEN | TC2_CCR2_SWTRG;    // 6) start new Measurement for next Cycle
 }
 
 
 void sonic_init(void)
 {
-    // TODO
-
     trigger_init();
     echo_init();
 }
@@ -173,7 +153,7 @@ static void trigger_loop(void)
 }
 
 
-// 1) Statische Hilfsfunktion definieren – vor sonic_loop()
+// 1) static define addtion function
 static void display_loop(void)
 {
     if (state.sonic != SONIC_STATE_ON)

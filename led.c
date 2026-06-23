@@ -67,10 +67,6 @@ void led_init(void)
     PIOB_PER = (1 << 27)  | 1; // Peripherie Enable Register
     PIOB_OER = (1 << 27)  | 1; // Output Enable Register
 
-    // PIOB_SODR = 1;
-
-    // ABSR &= ~(1 << 27) 
-
     // T1_A2 Erweiterung input
     PMC_PCER0 = PMC_PCER0_PID14; // (1<<14) turn on PIO D in PMC to activate the clock
 
@@ -80,6 +76,7 @@ void led_init(void)
     NVIC->ISER[0] |= 1 << PIOD_ID;
     PIOD_IER = 0x7;
     
+    // just test on off on off ....
     // PIOB_SODR = (1 << 27);
     // PIOB_CODR = (1 << 27);
      
@@ -109,21 +106,9 @@ void PIOD_Handler(void) {
    // else state.led = LED_STATE_INVALID;
 }
 
-
-
-
 // loop for LED control - blinking when EDA code is running
 void led_loop(void)
 {
-
-//     if (!(PIOD_PDSR & (1<<0))) state.led = LED_STATE_ON;
-//     if (!(PIOD_PDSR & (1<<1))) state.led = LED_STATE_OFF;
-//     if (!(PIOD_PDSR & (1<<2))) state.led = LED_STATE_BLINKING;
-//    // else state.led = LED_STATE_INVALID;
-
-
-
-
     switch (state.led) // state.led
     {
     case LED_STATE_OFF:
